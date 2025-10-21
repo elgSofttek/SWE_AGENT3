@@ -8,6 +8,7 @@ from typing import Annotated, Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from sweagent.types import History, HistoryItem
+from sweagent.agent.pattern_detector import ErrorPatternDetector, create_error_info
 
 
 class AbstractHistoryProcessor(Protocol):
@@ -137,6 +138,10 @@ class LastNObservations(BaseModel):
     # pydantic config
     model_config = ConfigDict(extra="forbid")
 
+    def __init__(self, **data):
+        super().__init__(**data)
+        object.__setattr__(self, 'error_detector', ErrorPatternDetector())
+
     @field_validator("n")
     def validate_n(cls, n: int) -> int:
         if n <= 0:
@@ -173,7 +178,64 @@ class LastNObservations(BaseModel):
                 if num_images > 0:
                     data["content"] += f" ({num_images} images omitted)"
                 new_history.append(data)
+
+        if new_history and len(new_history) > 0:
+            last_entry = new_history[-1]
+            
+            if last_entry.get("message_type") == "observation" and "content" in last_entry:
+                observation = _get_content_text(last_entry)
+                
+                # Obtener la acción previa
+                action = ""
+                for i in range(len(new_history) - 2, -1, -1):
+                    if new_history[i].get("message_type") == "action":
+                        action = _get_content_text(new_history[i])
+                        break
+                
+                # Detectar si hay error
+                error_info = self._extract_error_from_observation(observation, action)
+                
+                if error_info:
+                    self.error_detector.add_error(error_info)
+                    
+                    # Verificar loops
+                    is_loop, loop_reason = self.error_detector.detect_loop()
+                    
+                    # Agregar sugerencia si es necesario
+                    if is_loop or self.error_detector.should_suggest_alternative_approach():
+                        suggestion = self.error_detector.get_recovery_suggestion()
+                        if suggestion:
+                            separator = "\n" + "="*70 + "\n"
+                            current_content = _get_content_text(last_entry)
+                            _set_content_text(last_entry, current_content + separator + suggestion + separator)
+
         return new_history
+    
+    def _extract_error_from_observation(self, observation: str, action: str):
+        """Detecta si hay un error en la observación"""
+        if not observation:
+            return None
+        
+        observation_lower = observation.lower()
+        
+        # Detectar errores de linting
+        if "syntax error" in observation_lower or "proposed edit has introduced" in observation_lower:
+            return create_error_info(
+                message=observation[:200],
+                action=action,
+                traceback=observation
+            )
+        
+        # Detectar errores de Python
+        if "traceback" in observation_lower or "error:" in observation_lower:
+            return create_error_info(
+                message=observation[:200],
+                action=action,
+                traceback=observation
+            )
+        
+        return None
+
 
 
 class TagToolCallObservations(BaseModel):
