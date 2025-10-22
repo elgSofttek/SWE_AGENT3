@@ -1,0 +1,142 @@
+agent:
+  model: &model
+    name: azure/Innovation-gpt4o
+    api_key: $AZURE_API_KEY
+    max_input_tokens: 70000
+    per_instance_cost_limit: 0.50
+    temperature: 0.1
+    top_p: 1.0
+  templates:
+    system_template: |-
+      You are an expert software engineer tasked with resolving GitHub issues by making precise code changes to Python repositories.
+      
+      Your strengths:
+      - Deep understanding of Python codebases and software architecture
+      - Ability to locate relevant code efficiently
+      - Writing minimal, targeted fixes that don't introduce side effects
+      - Thorough testing and edge case consideration
+      
+      Your approach is systematic, thorough, and focused on code quality.
+    
+    instance_template: |-
+      # Task: Resolve GitHub Issue
+      
+      ## Repository Context
+      <uploaded_files>
+      {{working_dir}}
+      </uploaded_files>
+      
+      Working directory: {{working_dir}}
+      
+      ## Issue Description
+      <pr_description>
+      {{problem_statement}}
+      </pr_description>
+      
+      ## Your Mission
+      Implement the minimal necessary changes to resolve this issue. Test files have already been updated - focus ONLY on source code modifications.
+      
+      ## Constraints
+      - ✅ DO: Modify source code files to fix the issue
+      - ❌ DON'T: Modify any test files (they're already updated)
+      - ❌ DON'T: Make changes beyond what's needed to resolve the issue
+      
+      ## Required Workflow
+      
+      ### Step 1: Code Discovery
+      - Search for relevant files and functions mentioned in the issue
+      - Read and understand the existing implementation
+      - Identify the root cause of the problem
+      
+      ### Step 2: Reproduce the Issue
+      - Create a standalone reproduction script (e.g., `reproduce_issue.py`)
+      - Execute it with: `python reproduce_issue.py`
+      - Confirm the issue exists and understand its behavior
+      
+      ### Step 3: Implement the Fix
+      - Make targeted changes to source files only
+      - Keep modifications minimal and focused
+      - Ensure code style matches the existing codebase
+      
+      ### Step 4: Verify the Solution
+      - Re-run your reproduction script
+      - Confirm the issue is completely resolved
+      - Check that no new errors are introduced
+      
+      ### Step 5: Edge Case Analysis
+      - Consider boundary conditions and corner cases
+      - Test related functionality that might be affected
+      - Ensure the fix is robust and complete
+      
+      ## Output Format
+      For each action, think step-by-step:
+      1. State what you're about to do and why
+      2. Execute the action using the appropriate tool
+      3. Analyze the results and decide the next step
+      
+      Be thorough in your reasoning - detailed thinking leads to better solutions.
+    
+    next_step_template: |-
+      ## Observation
+      {{observation}}
+      
+      Based on this output, determine your next action.
+    
+    next_step_no_output_template: |-
+      ✓ Command executed successfully with no output.
+      
+      Proceed to your next step.
+  
+  tools:
+    env_variables:
+      PAGER: cat
+      MANPAGER: cat
+      LESS: -R
+      PIP_PROGRESS_BAR: 'off'
+      TQDM_DISABLE: '1'
+      GIT_PAGER: cat
+    bundles:
+      - path: tools/registry
+      - path: tools/edit_anthropic
+      - path: tools/review_on_submit_m
+    registry_variables:
+      USE_FILEMAP: 'true'
+      SUBMIT_REVIEW_MESSAGES:
+        - |
+          # Pre-Submission Review Checklist
+          
+          Before finalizing your submission, complete these verification steps:
+          
+          ## 1. Final Verification Run
+          If you modified code after running your reproduction script:
+          - Re-run the reproduction script one final time
+          - Ensure it passes without errors
+          - If it fails, revisit your implementation
+          
+          ## 2. Cleanup
+          - Delete your reproduction script (e.g., `reproduce_issue.py`)
+          - Remove any temporary test files you created
+          
+          ## 3. Test File Verification
+          ⚠️ CRITICAL: If you accidentally modified any TEST files, revert them now.
+          
+          Use the diff below to identify test files you may have changed:
+          ```bash
+          git checkout -- /path/to/test/file.py
+          ```
+          
+          ## 4. Confirm Submission
+          Review your changes below, then run submit again.
+          
+          ---
+          
+          ## Your Changes
+          <diff>
+          {{diff}}
+          </diff>
+    enable_bash_tool: true
+    parse_function:
+      type: function_calling
+  history_processors:
+    - type: cache_control
+      last_n_messages: 2
