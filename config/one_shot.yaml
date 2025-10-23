@@ -75,7 +75,7 @@ agent:
             {{diff}}
             </diff>
       parse_function: &parse_function
-        type: function_calling
+        type: thought_action
     history_processors: &vanilla_history_processors
       - type: last_n_observations
         n: 5
