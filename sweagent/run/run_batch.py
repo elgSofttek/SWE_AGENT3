@@ -357,6 +357,11 @@ class RunBatch:
         try:
             env.start()
             self._chooks.on_instance_start(index=0, env=env, problem_statement=instance.problem_statement)
+
+            # ⭐ Reiniciar detector de errores para nueva instancia
+            if hasattr(agent, 'history_processor') and hasattr(agent.history_processor, 'error_detector'):
+                agent.history_processor.error_detector.reset()
+                
             result = agent.run(
                 problem_statement=instance.problem_statement,
                 env=env,
