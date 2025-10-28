@@ -37,6 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from sweagent.agent.agents import AbstractAgent, AgentConfig, get_agent_from_config
+from sweagent.agent.history_processors import reset_global_error_detector
 from sweagent.agent.problem_statement import (
     EmptyProblemStatement,
     ProblemStatement,
@@ -195,11 +196,11 @@ class RunSingle:
         output_dir.mkdir(parents=True, exist_ok=True)
         if self.agent.replay_config is not None:  # type: ignore[attr-defined]
             (output_dir / "config.yaml").write_text(yaml.dump(self.agent.replay_config.model_dump_json(), indent=2))  # type: ignore[attr-defined]
-        
-        # ⭐ Reiniciar detector de errores para nueva instancia
-        if hasattr(self.agent, 'history_processor') and hasattr(self.agent.history_processor, 'error_detector'):
-            self.agent.history_processor.error_detector.reset()
-            
+
+        # Resetear detector de errores global para nueva instancia
+        reset_global_error_detector()
+        self.logger.debug("Error detector reset for new instance")
+
         result = self.agent.run(
             problem_statement=self.problem_statement,
             env=self.env,

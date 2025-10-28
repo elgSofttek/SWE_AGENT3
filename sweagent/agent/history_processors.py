@@ -10,6 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sweagent.types import History, HistoryItem
 from sweagent.agent.pattern_detector import ErrorPatternDetector, create_error_info
 
+# Instancia global del detector de errores para mantener estado entre observaciones
+_GLOBAL_ERROR_DETECTOR = ErrorPatternDetector()
+
 
 class AbstractHistoryProcessor(Protocol):
     @abstractmethod
@@ -140,7 +143,8 @@ class LastNObservations(BaseModel):
 
     def __init__(self, **data):
         super().__init__(**data)
-        object.__setattr__(self, 'error_detector', ErrorPatternDetector())
+        # Usar instancia global para mantener estado entre observaciones
+        object.__setattr__(self, 'error_detector', _GLOBAL_ERROR_DETECTOR)
 
     @field_validator("n")
     def validate_n(cls, n: int) -> int:
@@ -212,28 +216,86 @@ class LastNObservations(BaseModel):
         return new_history
     
     def _extract_error_from_observation(self, observation: str, action: str):
-        """Detecta si hay un error en la observación"""
+        """Detecta si hay un error en la observación y extrae información detallada
+
+        Args:
+            observation: Texto de la observación que puede contener un error
+            action: Acción que produjo la observación
+
+        Returns:
+            Diccionario con información del error o None si no hay error
+        """
         if not observation:
             return None
-        
+
         observation_lower = observation.lower()
-        
+
+        # Inicializar variables de extracción
+        file_path = ""
+        line_num = 0
+        error_message = ""
+        code_snippet = ""
+
         # Detectar errores de linting
         if "syntax error" in observation_lower or "proposed edit has introduced" in observation_lower:
+            # Intentar extraer el mensaje de error
+            error_lines = [line for line in observation.split('\n') if 'error' in line.lower()]
+            error_message = error_lines[0] if error_lines else observation[:200]
+
             return create_error_info(
-                message=observation[:200],
+                message=error_message[:200],
+                file=file_path,
+                line=line_num,
                 action=action,
+                code_snippet=code_snippet,
                 traceback=observation
             )
-        
-        # Detectar errores de Python
+
+        # Detectar errores de Python con traceback
         if "traceback" in observation_lower or "error:" in observation_lower:
+            # Extraer información del traceback con regex
+            # Patrón: File "path", line X
+            file_match = re.search(r'File "([^"]+)", line (\d+)', observation)
+            if file_match:
+                file_path = file_match.group(1)
+                try:
+                    line_num = int(file_match.group(2))
+                except (ValueError, IndexError):
+                    line_num = 0
+
+            # Extraer tipo de error y mensaje
+            # Patrón: ErrorType: mensaje
+            error_match = re.search(r'(\w+Error): (.+?)(?:\n|$)', observation)
+            if error_match:
+                error_type = error_match.group(1)
+                error_detail = error_match.group(2)
+                error_message = f"{error_type}: {error_detail}"
+            else:
+                # Si no encuentra el patrón, usar las primeras líneas con "error"
+                error_lines = [line for line in observation.split('\n') if 'error' in line.lower()]
+                error_message = error_lines[0] if error_lines else observation[:200]
+
+            # Intentar extraer snippet de código (línea que causó el error)
+            # Buscar líneas después de "File..." que no sean comentarios del traceback
+            if file_match:
+                lines = observation.split('\n')
+                for i, line in enumerate(lines):
+                    if 'File "' in line and i + 1 < len(lines):
+                        # La siguiente línea suele ser el código
+                        next_line = lines[i + 1].strip()
+                        if next_line and not next_line.startswith('File'):
+                            code_snippet = next_line[:100]  # Limitar tamaño
+                            break
+
             return create_error_info(
-                message=observation[:200],
+                message=error_message[:200],
+                file=file_path,
+                line=line_num,
                 action=action,
+                code_snippet=code_snippet,
                 traceback=observation
             )
-        
+
         return None
 
 
@@ -459,3 +521,15 @@ HistoryProcessor = Annotated[
     | ImageParsingHistoryProcessor,
     Field(discriminator="type"),
 ]
+
+
+def reset_global_error_detector() -> None:
+    """Resetea el detector de errores global.
+
+    Esta función debe llamarse al inicio de cada nueva instancia/tarea
+    para evitar contaminación de errores entre diferentes problemas.
+
+    Es llamada automáticamente por run_single.py y run_batch.py.
+    """
+    global _GLOBAL_ERROR_DETECTOR
+    _GLOBAL_ERROR_DETECTOR.reset()
