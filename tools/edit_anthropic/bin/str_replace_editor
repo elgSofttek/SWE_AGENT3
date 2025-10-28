@@ -578,20 +578,24 @@ class EditTool:
             if errors.strip():
                 epilogue = LINT_WARNING_TEMPLATE.format(errors=errors)
 
-                # self.error_detector.add_error(create_error_info(
-                #     message=errors[:200],
-                #     file=str(path),
-                #     line=replacement_window_start_line,
-                #     action="str_replace",
-                #     traceback=post_edit_lint
-                # ))
-                
-                # # Verificar si hay loop de errores
-                # is_loop, loop_reason = self.error_detector.detect_loop()
-                # if is_loop or self.error_detector.should_suggest_alternative_approach():
-                #     suggestion = self.error_detector.get_recovery_suggestion()
-                #     if suggestion:
-                #         epilogue += "\n\n" + "="*70 + "\n" + suggestion + "\n" + "="*70
+                # Registrar error de linting en el detector
+                # Nota: Los errores de runtime (IndentationError, SyntaxError al ejecutar, etc.)
+                # son capturados por history_processors.py cuando se procesan las observaciones.
+                # Aquí solo registramos errores de linting estático (flake8).
+                self.error_detector.add_error(create_error_info(
+                    message=errors[:200],
+                    file=str(path),
+                    line=replacement_window_start_line,
+                    action="str_replace",
+                    traceback=post_edit_lint
+                ))
+
+                # Verificar si hay loop de errores
+                is_loop, loop_reason = self.error_detector.detect_loop()
+                if is_loop or self.error_detector.should_suggest_alternative_approach():
+                    suggestion = self.error_detector.get_recovery_suggestion()
+                    if suggestion:
+                        epilogue += "\n\n" + "="*70 + "\n" + suggestion + "\n" + "="*70
 
         # Save the content to history
         self._file_history[path].append(file_content)

@@ -50,6 +50,7 @@ from swerex.deployment.hooks.status import SetStatusDeploymentHook
 from sweagent import TRAJECTORY_DIR
 from sweagent.agent.agents import AgentConfig, get_agent_from_config
 from sweagent.agent.hooks.status import SetStatusAgentHook
+from sweagent.agent.history_processors import reset_global_error_detector
 from sweagent.environment.hooks.status import SetStatusEnvironmentHook
 from sweagent.environment.swe_env import SWEEnv
 from sweagent.exceptions import ModelConfigurationError, TotalCostLimitExceededError
@@ -335,6 +336,10 @@ class RunBatch:
         output_dir.mkdir(parents=True, exist_ok=True)
         self.agent_config.name = f"{instance.problem_statement.id}"
         agent = get_agent_from_config(self.agent_config)
+
+        # Resetear el detector de errores global para evitar contaminación entre instancias
+        reset_global_error_detector()
+        self.logger.debug(f"Error detector reset for instance {instance.problem_statement.id}")
         single_run_replay_config = RunSingleConfig(
             agent=self.agent_config,
             problem_statement=instance.problem_statement,
