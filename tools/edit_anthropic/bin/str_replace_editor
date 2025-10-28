@@ -18,7 +18,7 @@ from typing import List, Optional, Tuple
 # if str(_parent_dir) not in sys.path:
 #     sys.path.insert(0, str(_parent_dir))
     
-# from sweagent.agent.pattern_detector import ErrorPatternDetector, create_error_info
+from sweagent.agent.pattern_detector import ErrorPatternDetector, create_error_info
 import io
 
 from registry import registry as REGISTRY
