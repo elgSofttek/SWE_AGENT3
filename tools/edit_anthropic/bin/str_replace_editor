@@ -578,6 +578,10 @@ class EditTool:
             if errors.strip():
                 epilogue = LINT_WARNING_TEMPLATE.format(errors=errors)
 
+                # Registrar error de linting en el detector
+                # Nota: Los errores de runtime (IndentationError, SyntaxError al ejecutar, etc.)
+                # son capturados por history_processors.py cuando se procesan las observaciones.
+                # Aquí solo registramos errores de linting estático (flake8).
                 self.error_detector.add_error(create_error_info(
                     message=errors[:200],
                     file=str(path),
@@ -585,7 +589,7 @@ class EditTool:
                     action="str_replace",
                     traceback=post_edit_lint
                 ))
-                
+
                 # Verificar si hay loop de errores
                 is_loop, loop_reason = self.error_detector.detect_loop()
                 if is_loop or self.error_detector.should_suggest_alternative_approach():
